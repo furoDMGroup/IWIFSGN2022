@@ -1,0 +1,8 @@
+scipy
+scikit-learn >= 0.22.0
+pandas
+numpy
+pytest
+xlrd
+requests >= 2.23.0
+openpyxl
