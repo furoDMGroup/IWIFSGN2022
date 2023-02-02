@@ -6,7 +6,7 @@ from dataset.aggregations import *
 import setup_path as pth
 from classification.k_neighbours import KNNAlgorithmF
 from preprocessing.missing_values import MissingValuesInserterColumnsIndependent
-from evaluation.missing_values_crossvalidate import cross_validate_missing_in_test
+from sklearn.model_selection import cross_validate_missing_in_test
 
 pd.set_option('display.max_colwidth', 100000000)
 pd.set_option('display.max_columns', None)
