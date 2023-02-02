@@ -5,7 +5,7 @@ from classification.k_neighbours import KNNAlgorithmM
 
 
 @pytest.mark.parametrize(
-    "Estimator", [KNNAlgorithmM]
+    "Estimator", [KNNAlgorithmM()]
 )
 def test_all_estimators(Estimator):
     return check_estimator(Estimator)

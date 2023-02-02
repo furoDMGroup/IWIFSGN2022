@@ -202,11 +202,16 @@ class KNNAlgorithmM(BaseEstimator, ClassifierMixin):
 
 
 class KNNAlgorithmF(KNNAlgorithmM):
-    def __init__(self, k_neighbours=(3, 5, 7), r=10, aggregation=A1Aggregation(), missing_representation=-1):
+    def __init__(self, k_neighbours=(3, 5, 7), r=10, aggregation=A1Aggregation(), missing_representation=-1, seed=None):
         self.k_neighbours = k_neighbours
         self.r = r
         self.aggregation = aggregation
         self.missing_representation = missing_representation
+        self.seed = seed
+        if seed is not None:
+            self.random = random.Random(seed)
+        else:
+            self.random = random.Random()
 
     def fit(self, X, y):
         #X, y = check_X_y(X, y)
@@ -218,8 +223,41 @@ class KNNAlgorithmF(KNNAlgorithmM):
         for i in range(X.shape[1]):
             self.attributes_distinct_values[i] = np.unique(X[:, i])
             self.attributes_distinct_values[i] = np.delete(self.attributes_distinct_values[i],
-                                                           np.where(self.attributes_distinct_values[i] == self.missing_representation))
+                                        np.where(self.attributes_distinct_values[i] == self.missing_representation))
         return self
+
+    def fill_missing_value_optimized(self, instance_index, columns_indexes, X):
+        instances_filled = np.ndarray(shape=(self.r, self.X_.shape[1]))
+        for i in range(self.r):
+            instances_filled[i] = X[instance_index].copy()
+            for j in columns_indexes:
+                if self.attributes_distinct_values[j].shape[0] == 0:
+                    instances_filled[i][j] = -1
+                else:
+                    if self.attributes_distinct_values[j].shape[0] == 1:
+                        random_value_from_dataset = 0
+                    else:
+                        random_value_from_dataset = self.random.randint(0, self.attributes_distinct_values[j].shape[0] - 1)
+                    instances_filled[i][j] = self.attributes_distinct_values[j][random_value_from_dataset]
+                #instances_filled[i][j] = self.attributes_distinct_values[j][random_value_from_dataset]
+        distance = euclidean_distances(instances_filled, self.X_)
+        sorted = np.argsort(distance, axis=1)
+        p = np.ndarray(shape=(self.r, len(self.k_neighbours)))
+
+        for i, k in enumerate(self.k_neighbours):
+            p[:, i] = self._classic_knn_optimized(sorted, k)
+
+        min_p = np.ndarray(shape=(self.r,))
+        max_p = np.ndarray(shape=(self.r,))
+        fuzzy_sets = np.ndarray(shape=(self.r, 2))
+        for i in range(self.r):
+            min_p[i] = np.min(p[i])
+            max_p[i] = np.max(p[i])
+            fuzzy_sets[i] = np.array([min_p[i], max_p[i]])
+
+        uncertainty_interval = self.aggregation.aggregate_numpy_arrays_representation(fuzzy_sets)
+        final_p = uncertainty_interval.sum() / 2
+        return final_p
 
     def fill_missing_value(self, instance_index, columns_indexes, X):
         instances_filled = np.ndarray(shape=(self.r, self.X_.shape[1]))
@@ -232,7 +270,7 @@ class KNNAlgorithmF(KNNAlgorithmM):
                     if self.attributes_distinct_values[j].shape[0] == 1:
                         random_value_from_dataset = 0
                     else:
-                        random_value_from_dataset = random.randint(0, self.attributes_distinct_values[j].shape[0] - 1)
+                        random_value_from_dataset = self.random.randint(0, self.attributes_distinct_values[j].shape[0] - 1)
                     instances_filled[i][j] = self.attributes_distinct_values[j][random_value_from_dataset]
                 #instances_filled[i][j] = self.attributes_distinct_values[j][random_value_from_dataset]
         distance = euclidean_distances(instances_filled, self.X_)
@@ -260,7 +298,7 @@ class KNNAlgorithmF(KNNAlgorithmM):
         missing_values_indexes = np.argwhere(X == self.missing_representation)
         instances_filled = np.ndarray(shape=(missing_values_indexes.shape[0], self.r, self.X_.shape[1]))
         instances_filled[missing_values_indexes[:, 0], :] = np.repeat(X[missing_values_indexes[:, 0], np.newaxis], self.r, axis=1)
-        instances_filled[:, 0, missing_values_indexes[:, 1]] = [d[random.randint(0, d.shape[0] - 1)] for d in
+        instances_filled[:, 0, missing_values_indexes[:, 1]] = [d[self.random.randint(0, d.shape[0] - 1)] for d in
                                           self.attributes_distinct_values[missing_values_indexes[:, 1]]]
         self.compute_final_p(instances_filled[:])
 
@@ -270,7 +308,7 @@ class KNNAlgorithmF(KNNAlgorithmM):
         for i in range(self.r):
             instances_filled[i] = X[instance_index].copy()
             for j in columns_indexes:
-                random_value_from_dataset = random.randint(0, self.attributes_distinct_values[j].shape[0]-1)
+                random_value_from_dataset = self.random.randint(0, self.attributes_distinct_values[j].shape[0]-1)
                 instances_filled[i][j] = self.attributes_distinct_values[j][random_value_from_dataset]
         distance = euclidean_distances(instances_filled, self.X_)
         sorted = np.argsort(distance, axis=1)
@@ -353,6 +391,18 @@ class KNNAlgorithmF(KNNAlgorithmM):
         return predicted_decision
 
     def predict_proba_optimized(self, X):
+        records_with_missing_values_indexes = self.get_missing_values_indexes(X)
+        predicted_decision_proba = np.empty(shape=(X.shape[0], 2), dtype=float)
+        final_p = self.compute_final_p(X)
+        predicted_decision_proba[:, 1] = final_p
+        predicted_decision_proba[:, 0] = 1 - final_p
+        for index in records_with_missing_values_indexes.keys():
+            temp = self.fill_missing_value_optimized(int(index), records_with_missing_values_indexes[index], X)
+            predicted_decision_proba[int(index), 1] = temp
+            predicted_decision_proba[int(index), 0] = 1 - temp
+        return predicted_decision_proba
+
+    def predict_proba_optimized_old(self, X):
         records_with_missing_values_indexes = self.get_missing_values_indexes(X)
         predicted_decision_proba = np.empty(shape=(X.shape[0], 2), dtype=float)
         final_p = self.compute_final_p(X)

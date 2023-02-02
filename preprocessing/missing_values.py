@@ -63,15 +63,18 @@ class MissingValuesInserterColumnsIndependent(TransformerMixin):
     def fit_transform(self, X, *_):
         X_prim = copy.deepcopy(X)
         for i in range(0, len(self.columns)):
+            if self.seed is not None:
+                seed = i
+            else:
+                seed = None
             if i == 0:
-                if self.seed is not None:
-                    seed = i
-                else:
-                    seed = None
                 X_prim = MissingValuesInserter(columns=(self.columns[i],), percentage=self.percentage, nan_representation=self.nan_representation, seed=seed).fit_transform(X)
             else:
                 X_prim = MissingValuesInserter(columns=(self.columns[i],), percentage=self.percentage, nan_representation=self.nan_representation, seed=seed).fit_transform(X_prim)
         return X_prim
+
+    def transform(self, X, *_):
+        return self.fit_transform(X)
 
 
 class MissingValuesInserterRows(TransformerMixin):
